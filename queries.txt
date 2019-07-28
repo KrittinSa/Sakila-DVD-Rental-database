@@ -1,0 +1,91 @@
+/* Query 1 - the query used for first insight */
+
+SELECT DISTINCT(film_title), 
+		category_name, 
+		rental_count 
+FROM	(SELECT f.title			  AS film_title, 
+		c.name 			  AS category_name, 
+		Count(rental_date) 
+		  OVER (
+		    partition BY f.title) AS rental_count
+	 FROM	category c
+		JOIN film_category fc
+		  ON c.category_id = fc.category_id
+		JOIN film f
+		  ON fc.film_id = f.film_id
+		JOIN inventory i
+		  ON f.film_id = i.film_id
+		JOIN rental r
+		  ON i.inventory_id = r.inventory_id
+	 WHERE c.name IN ('Animation', 'Children',  'Classics', 'Comedy', 
+			  'Family', 'Music')
+    	 ORDER BY film_title) sub
+ORDER BY category_name;
+
+
+/* Query 2 - the query used for second insight */
+
+SELECT  DATE_PART('month',r.rental_date) AS rental_month,
+	DATE_PART('year',r.rental_date)  AS rental_year,
+	s.store_id 			 AS store_id,
+	Count(*) 			 AS counts_rental
+FROM staff s
+JOIN rental r
+  ON s.staff_id = r.staff_id
+GROUP BY 1, 2, 3	
+ORDER BY counts_rental DESC;
+
+
+/* Query 3 - the query used for third insight */
+
+WITH t1 AS (
+    SELECT c.customer_id		   	   AS customer_id,
+    	   Concat(c.first_name, ' ', c.last_name)  AS full_name,
+    	   sum(amount)				   AS pay_amount
+    FROM payment p
+    JOIN customer c
+      ON p.customer_id = c.customer_id
+    GROUP BY 1, 2
+    ORDER BY 3 DESC
+    LIMIT 10)
+
+SELECT DATE_TRUNC('month', p.payment_date) AS pay_month,
+	t.full_name			   AS full_name,
+	Count(p.payment_date) 		   AS pay_countpermont,
+	SUM(p.amount) 			   AS pay_amount
+FROM payment p
+JOIN t1 t
+  ON t.customer_id = p.customer_id
+GROUP BY 1, 2
+ORDER BY 2;
+
+
+/* Query 4 - the query used for fourth insight */
+
+WITH t1 AS (
+    SELECT c.customer_id			  AS customer_id,
+	   Concat(c.first_name, ' ', c.last_name) AS full_name,
+	   sum(amount) 				  AS pay_amount
+    FROM payment p
+    JOIN customer c
+      ON p.customer_id = c.customer_id
+    GROUP BY 1, 2
+    ORDER BY 3 DESC
+    LIMIT 10),
+
+payment_summary AS (
+    SELECT DATE_TRUNC('month', p.payment_date)    AS pay_month,
+	   t.full_name 				  AS full_name,
+	   Count(p.payment_date) 		  AS pay_countpermont,
+	   SUM(p.amount) 			  AS pay_amount
+    FROM payment p
+    JOIN t1 t
+      ON t.customer_id = p.customer_id
+    GROUP BY 1, 2
+    ORDER BY 2)
+
+SELECT *, 
+	pay_amount - LAG(pay_amount) OVER (partition BY full_name ORDER BY pay_month) AS lag_difference
+FROM payment_summary;
+
+
